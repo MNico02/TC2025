@@ -1,0 +1,22 @@
+TOKEN	        TIPO	            LINEA	COLUMNA
+int 	        Palabra Clave	    1   	1
+suma	        Identificador	    1	    5
+=	            Operador	        1	    10
+10	            Literal (entero)	1	    12
+ + 	            Operador	        1	    15
+5	            Literal (entero)	1	    17
+;	            Separador	        1	    18
+if	            Palabra Clave	    2	    1
+(	            Separador	        2	    4
+suma	        Identificador	    2   	5
+>	            Operador	        2	    10
+10	            Literal (entero)	2	    12
+)	            Separador	        2	    14
+{	            Separador	        2	    16
+print	        Palabra Clave	    3	    5
+(	            Separador	        3	    10
+"El resultado   Separador	        3	    11 
+es mayor que 10"	
+)	            Separador	        3	    41
+;	            Separador	        3   	42
+}           	Separador	        4   	1
