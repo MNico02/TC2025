@@ -1,0 +1,119 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             http://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.compilador</groupId>
+  <artifactId>demo</artifactId>
+  <version>1.0-SNAPSHOT</version>
+  <packaging>jar</packaging>
+
+  <name>demo</name>
+
+  <properties>
+    <!-- Codificación y versión de Java -->
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <maven.compiler.source>17</maven.compiler.source>
+    <maven.compiler.target>17</maven.compiler.target>
+
+    <!-- Versión de ANTLR que usarás -->
+    <antlr4.version>4.13.1</antlr4.version>
+  </properties>
+
+  <dependencies>
+    <!-- Runtime de ANTLR (si no existe, el JAR no funcionará) -->
+    <dependency>
+      <groupId>org.antlr</groupId>
+      <artifactId>antlr4-runtime</artifactId>
+      <version>${antlr4.version}</version>
+    </dependency>
+
+    <!-- Paquete completo de ANTLR para usar TreeViewer (GUI) -->
+    <dependency>
+      <groupId>org.antlr</groupId>
+      <artifactId>antlr4</artifactId>
+      <version>${antlr4.version}</version>
+    </dependency>
+
+    <!-- JUnit (si tienes tests basados en JUnit 3) -->
+    <dependency>
+      <groupId>junit</groupId>
+      <artifactId>junit</artifactId>
+      <version>3.8.1</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <!--
+        1) ANTLR4 Maven Plugin
+        Se ejecuta en la fase generate-sources para generar automáticamente
+        el Lexer, Parser, BaseListener y BaseVisitor a partir de tus .g4.
+      -->
+      <plugin>
+        <groupId>org.antlr</groupId>
+        <artifactId>antlr4-maven-plugin</artifactId>
+        <version>${antlr4.version}</version>
+        <executions>
+          <execution>
+            <id>generate-antlr-sources</id>
+            <phase>generate-sources</phase>
+            <goals>
+              <goal>antlr4</goal>
+            </goals>
+          </execution>
+        </executions>
+        <configuration>
+          <!--
+            Si tus .g4 están en src/main/antlr4, no hace falta indicar sourceDirectory.
+            El output se coloca automáticamente en target/generated-sources/antlr4.
+          -->
+          <listener>true</listener>
+          <visitor>true</visitor>
+        </configuration>
+      </plugin>
+
+      <!-- 2) Compilador de Java (para Java 17) -->
+      <plugin>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.11.0</version>
+        <configuration>
+          <source>${maven.compiler.source}</source>
+          <target>${maven.compiler.target}</target>
+        </configuration>
+      </plugin>
+
+      <!--
+        3) Assembly Plugin para generar un JAR "con dependencias"
+        que contenga todas las clases (incluido runtime de ANTLR).
+      -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-assembly-plugin</artifactId>
+        <version>3.6.0</version>
+        <configuration>
+          <archive>
+            <manifest>
+              <!-- Clase principal de tu proyecto -->
+              <mainClass>com.compilador.App</mainClass>
+            </manifest>
+          </archive>
+          <descriptorRefs>
+            <descriptorRef>jar-with-dependencies</descriptorRef>
+          </descriptorRefs>
+        </configuration>
+        <executions>
+          <execution>
+            <id>make-assembly</id>
+            <phase>package</phase>
+            <goals>
+              <goal>single</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>
