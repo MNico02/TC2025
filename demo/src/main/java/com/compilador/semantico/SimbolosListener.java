@@ -108,9 +108,7 @@ public class SimbolosListener extends MiniLenguajeParserBaseListener {
     }
 
 
-    // ----------------------------------------
     // 2) Declaración de variable
-    // ----------------------------------------
     @Override
     public void enterDeclaracionVariable(DeclaracionVariableContext ctx) {
         String tipoVar   = ctx.tipo().getText();

@@ -1,0 +1,15 @@
+public static void main(String[] args) {
+    // Error 1: Carácter no reconocido
+    int valor# = 42;
+
+    // Error 2: Cadena sin cerrar
+    String mensaje = "Esto es un error;
+
+    // Error 3: Comentario sin cerrar
+    /* Este comentario no tiene cierre
+
+    // Error 4: Carácter Unicode inválido
+    char letra = '™';
+
+    System.out.println("Fin del ejemplo");
+}
