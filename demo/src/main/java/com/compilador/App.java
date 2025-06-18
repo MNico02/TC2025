@@ -1,5 +1,7 @@
 package com.compilador;
 
+//import com.compilador.semantico.SimbolosListener;
+//import com.compilador.semantico.TablaSimbolos;
 import org.antlr.v4.runtime.*;
 import org.antlr.v4.gui.TreeViewer;
 import org.antlr.v4.runtime.tree.*;
@@ -52,5 +54,28 @@ public class App {
             frame.setSize(800, 600);
             frame.setVisible(true);
 
+//        // 4) Invocar el listener semántico
+//        SimbolosListener listener = new SimbolosListener();
+//        ParseTreeWalker walker = new ParseTreeWalker();
+//        walker.walk(listener, tree);
+//
+//        // 5) Obtener y mostrar errores y warnings semánticos
+//        List<String> errores  = listener.getErrores();
+//        List<String> warnings = listener.getWarnings();
+//
+//        if (!errores.isEmpty()) {
+//            System.err.println("\n=== ERRORES SEMÁNTICOS ===");
+//            errores.forEach(System.err::println);
+//        }
+//        if (!warnings.isEmpty()) {
+//            System.out.println("\n=== WARNINGS SEMÁNTICOS ===");
+//            warnings.forEach(System.out::println);
+//        }
+//
+//        // 6) Si no hay errores, mostrar la tabla de símbolos
+//        if (errores.isEmpty()) {
+//            TablaSimbolos tabla = listener.getTablaSimbolos();
+//            tabla.imprimir();
+//        }
     }
 }

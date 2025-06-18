@@ -25,9 +25,11 @@ NOT_LOGICO       : '!' ;
 
 // ---------- Operadores relacionales ----------
 MAYOR            : '>' ;
-MAYOR_IGUAL      : '>=' ;
+MAYOR_IGUAL_A    : '>=' ;
+MAYOR_IGUAL_B    : '=>' ;
 MENOR            : '<' ;
-MENOR_IGUAL      : '<=' ;
+MENOR_IGUAL_A    : '<=' ;
+MENOR_IGUAL_B    : '=<' ;
 IGUAL_IGUAL      : '==' ;
 DISTINTO         : '!=' ;
 
@@ -66,12 +68,10 @@ CHARACTER
     ;
 
 // Cadena de texto (entre dobles comillas)
-/*
+
 STRING_literal
     : '"' ( ~["\\\r\n] | '\\' . )* '"'
     ;
-*/
-// (Si no necesitas strings en este subconjunto, puedes comentar o eliminar la regla STRING_literal)
 
 // ---------- Identificador ----------
 ID        : (LETRA | '_') (LETRA | DIGITO | '_')* ;

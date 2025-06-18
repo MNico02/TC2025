@@ -2,20 +2,18 @@ parser grammar MiniLenguajeParser;
 
 options { tokenVocab=MiniLenguajeLexer; }
 
-programa
-    : (sentencia)* EOF
-    ;
+programa : (declaracionFuncion)+ EOF ;
+
 
 // ---------- Sentencias principales ----------
 sentencia
     : declaracionVariable
-    | declaracionFuncion
     | asignacion
-    | ifStmt
-    | whileStmt
-    | forStmt
     | breakStmt
     | continueStmt
+    | forStmt
+    | whileStmt
+    | ifStmt
     | retorno
     | llamada PYC
     ;
@@ -26,6 +24,7 @@ tipo
     | CHAR
     | DOUBLE
     | VOID
+
     ;
 
 // ---------- Declaraciones de variables y funciones ----------
@@ -126,6 +125,7 @@ expresion
     | INTEGER                                   #expEntero
     | DECIMAL                                   #expDecimal
     | CHARACTER                                 #expCaracter
+    | STRING_literal                            #expCadena
     ;
 
 // ---------- Operadores binarios (aritméticos, relacionales y lógicos) ----------
@@ -137,8 +137,10 @@ operadorBinario
     | MODULO
     | MAYOR
     | MENOR
-    | MAYOR_IGUAL
-    | MENOR_IGUAL
+    | MAYOR_IGUAL_A
+    | MAYOR_IGUAL_B
+    | MENOR_IGUAL_A
+    | MENOR_IGUAL_B
     | IGUAL_IGUAL
     | DISTINTO
     | AND_LOGICO
