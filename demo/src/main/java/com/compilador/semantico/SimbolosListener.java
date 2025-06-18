@@ -652,38 +652,36 @@ public class SimbolosListener extends MiniLenguajeParserBaseListener {
     }
 
     private void verificarBucleInfinito(ProgramaContext ctx) {
-        if (ctx.sentencia() != null) {
-            for (SentenciaContext sCtx : ctx.sentencia()) {
-                // Revisar while
-                if (sCtx.whileStmt() != null) {
-                    WhileStmtContext w = sCtx.whileStmt();
-                    ExpresionContext cond = w.expresion();
-                    if (cond instanceof ExpEnteroContext) {
-                        String val = ((ExpEnteroContext) cond).INTEGER().getText();
-                        if (val.equals("1")) {
-                            warnings.add(String.format(
-                                    "[Warning] Línea %d:%d. Bucle 'while' potencialmente infinito.",
-                                    cond.getStart().getLine(),
-                                    cond.getStart().getCharPositionInLine()
-                            ));
-                        }
-                    }
-                }
-                // Revisar for
-                if (sCtx.forStmt() != null) {
-                    ForStmtContext f = sCtx.forStmt();
-                    boolean initVacio = f.forInit().getText().isEmpty();
-                    boolean condVacia = f.expresion().getText().isEmpty();
-                    boolean updVacia  = f.actualizacionFor().getText().isEmpty();
-
-                    if (initVacio && condVacia && updVacia) {
-                        Token tFor = f.getStart();
+        // Recorremos cada SentenciaContext dentro de ProgramaContext
+        for (SentenciaContext sCtx : ctx.getRuleContexts(SentenciaContext.class)) {
+            // whileStmt?
+            if (sCtx.whileStmt() != null) {
+                WhileStmtContext w = sCtx.whileStmt();
+                ExpresionContext cond = w.expresion();
+                if (cond instanceof ExpEnteroContext) {
+                    String val = ((ExpEnteroContext)cond).INTEGER().getText();
+                    if ("1".equals(val)) {
                         warnings.add(String.format(
-                                "[Warning] Línea %d:%d. Bucle 'for' potencialmente infinito.",
-                                tFor.getLine(),
-                                tFor.getCharPositionInLine()
+                                "[Warning] Línea %d:%d. Bucle 'while' potencialmente infinito.",
+                                cond.getStart().getLine(),
+                                cond.getStart().getCharPositionInLine()
                         ));
                     }
+                }
+            }
+            // forStmt?
+            if (sCtx.forStmt() != null) {
+                ForStmtContext f = sCtx.forStmt();
+                boolean initEmpty = f.forInit().getText().isEmpty();
+                boolean condEmpty = f.expresion().getText().isEmpty();
+                boolean updEmpty  = f.actualizacionFor().getText().isEmpty();
+                if (initEmpty && condEmpty && updEmpty) {
+                    Token tFor = f.getStart();
+                    warnings.add(String.format(
+                            "[Warning] Línea %d:%d. Bucle 'for' potencialmente infinito.",
+                            tFor.getLine(),
+                            tFor.getCharPositionInLine()
+                    ));
                 }
             }
         }

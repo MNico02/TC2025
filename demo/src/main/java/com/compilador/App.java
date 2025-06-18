@@ -1,81 +1,186 @@
 package com.compilador;
 
-//import com.compilador.semantico.SimbolosListener;
-//import com.compilador.semantico.TablaSimbolos;
-import org.antlr.v4.runtime.*;
+import com.compilador.semantico.SimbolosListener;
+import com.compilador.semantico.TablaSimbolos;
 import org.antlr.v4.gui.TreeViewer;
+import org.antlr.v4.runtime.*;
+import org.antlr.v4.runtime.misc.ParseCancellationException;
 import org.antlr.v4.runtime.tree.*;
-
-
-import javax.swing.JFrame;
-import javax.swing.JScrollPane;
-import java.io.FileInputStream;
-import java.io.InputStream;
-import java.util.Arrays;
-import java.util.List;
+import javax.swing.*;
+import java.io.*;
+import java.nio.file.*;
+import java.util.*;
+import java.util.stream.Collectors;
 
 public class App {
-    public static void main(String[] args) throws Exception {
-        if (args.length == 0) {
-            System.err.println("Uso: java -jar demo.jar <archivo>");
-            return;
+    // ANSI colors
+    private static final String RESET  = "\u001B[0m";
+    private static final String RED    = "\u001B[31m";
+    private static final String GREEN  = "\u001B[32m";
+    private static final String YELLOW = "\u001B[33m";
+    private static final String BLUE   = "\u001B[34m";
+    private static final String CYAN   = "\u001B[36m";
+
+    public static void main(String[] args) {
+        if (args.length < 1) {
+            System.err.println(RED + "Uso: java -jar compilador.jar <archivo.txt> [--no-ast]" + RESET);
+            System.exit(1);
         }
+        String inputPath = args[0];
+        boolean showAst  = Arrays.asList(args).contains("--no-ast") == false;
+        String baseName  = getBaseName(inputPath);
 
-        String archivo = args[0];
-        InputStream is = new FileInputStream(archivo);
-        CharStream input = CharStreams.fromStream(is);
+        try {
+            System.out.println(CYAN + "🚀 Iniciando compilación: " + inputPath + RESET);
+            long tStart = System.nanoTime();
 
-        // 1) Crear Lexer y TokenStream
-        MiniLenguajeLexer lexer = new MiniLenguajeLexer(input);
+            // 1. Léxico
+            long t0 = System.nanoTime();
+            CommonTokenStream tokens = analizarLexico(inputPath);
+            long t1 = System.nanoTime();
+            System.out.println(GREEN + "✅ Léxico OK" + RESET +
+                    " (" + ms(t1 - t0) + " ms, " + (tokens.size()-1) + " tokens)");
+
+            // 2. Sintáctico
+            t0 = System.nanoTime();
+            ParseTree tree = analizarSintaxis(tokens);
+            long t2 = System.nanoTime();
+            System.out.println(GREEN + "✅ Sintaxis OK" + RESET +
+                    " (" + ms(t2 - t0) + " ms)");
+
+            // 3. AST
+            if (showAst) {
+                System.out.println(BLUE + "\n=== Visualización AST ===" + RESET);
+                mostrarAST(tree, new MiniLenguajeParser(tokens));
+            }
+
+            // 4. Semántico
+            t0 = System.nanoTime();
+            SimbolosListener sem = analizarSemantica(tree);
+            long t3 = System.nanoTime();
+            System.out.println(GREEN + "✅ Semántico OK" + RESET +
+                    " (" + ms(t3 - t0) + " ms)");
+
+            TablaSimbolos tabla = sem.getTablaSimbolos();
+            System.out.println("\n" + BLUE + "📋 Tabla de Símbolos" + RESET);
+            tabla.imprimir();
+
+            // 5. Código Intermedio
+            t0 = System.nanoTime();
+            CodigoVisitor cv = new CodigoVisitor(tabla);
+            cv.visit(tree);
+            GeneradorCodigo gen = cv.getGenerador();
+            long t4 = System.nanoTime();
+            System.out.println(GREEN + "✅ Generación de C3D OK" + RESET +
+                    " (" + ms(t4 - t0) + " ms)");
+
+            System.out.println("\n" + BLUE + "📝 Código de Tres Direcciones" + RESET);
+            gen.imprimirCodigo();
+
+            // 6. Guardar C3D
+            String outFile = baseName + "_c3d.txt";
+            guardarCodigo(gen.getCodigo(), outFile);
+
+            // 7. Resumen
+            long tEnd = System.nanoTime();
+            System.out.println("\n" + BLUE + "=== Resumen ===" + RESET);
+            System.out.println("Tiempo total: " + ms(tEnd - tStart) + " ms");
+            System.out.println("Tokens: " + (tokens.size()-1));
+           // System.out.println("Símbolos: " + tabla.size());
+            System.out.println("Instrucciones: " + gen.getCodigo().size());
+            System.out.println("Archivo C3D: " + outFile);
+            System.out.println(GREEN + "\n🎉 ¡COMPILACIÓN EXITOSA! 🎉" + RESET);
+
+        } catch (ParseCancellationException ex) {
+            System.err.println(RED + "❌ Error léxico: " + ex.getMessage() + RESET);
+        } catch (IllegalArgumentException ex) {
+            System.err.println(RED + "❌ Error sintáctico: " + ex.getMessage() + RESET);
+        } catch (RuntimeException ex) {
+            System.err.println(RED + "❌ Error semántico: " + ex.getMessage() + RESET);
+        } catch (Exception ex) {
+            System.err.println(RED + "❌ Error inesperado: " + RESET);
+            ex.printStackTrace();
+        }
+    }
+
+    private static CommonTokenStream analizarLexico(String path) throws IOException {
+        CharStream in = CharStreams.fromFileName(path);
+        MiniLenguajeLexer lexer = new MiniLenguajeLexer(in);
+        List<String> errs = new ArrayList<>();
+        lexer.removeErrorListeners();
+        lexer.addErrorListener(new BaseErrorListener(){
+            @Override
+            public void syntaxError(Recognizer<?,?> r, Object o, int l, int c, String m, RecognitionException e){
+                errs.add("Léxico " + l + ":" + c + " " + m);
+                throw new ParseCancellationException(m);
+            }
+        });
         CommonTokenStream tokens = new CommonTokenStream(lexer);
         tokens.fill();
+        if (!errs.isEmpty()) {
+            errs.forEach(msg -> { throw new ParseCancellationException(msg); });
+        }
+        return tokens;
+    }
 
-        // 2) Mostrar tabla de tokens (opcional)
-        System.out.printf("%-20s %-25s %-10s %-10s%n", "TIPO", "LEXEMA", "LÍNEA", "COLUMNA");
-        System.out.println("-------------------------------------------------------------------");
-        for (Token token : tokens.getTokens()) {
-            String tipo = lexer.getVocabulary().getSymbolicName(token.getType());
-            if (tipo != null) {
-                System.out.printf("%-20s %-25s %-10d %-10d%n",
-                        tipo, token.getText(), token.getLine(), token.getCharPositionInLine());
+    private static ParseTree analizarSintaxis(CommonTokenStream tokens) {
+        MiniLenguajeParser parser = new MiniLenguajeParser(tokens);
+        List<String> errs = new ArrayList<>();
+        parser.removeErrorListeners();
+        parser.addErrorListener(new BaseErrorListener(){
+            @Override
+            public void syntaxError(Recognizer<?,?> r, Object o, int l, int c, String m, RecognitionException e){
+                errs.add("Sintaxis " + l + ":" + c + " " + m);
+            }
+        });
+        ParseTree tree = parser.programa();
+        if (!errs.isEmpty()) {
+            errs.forEach(msg -> System.err.println(RED + msg + RESET));
+            throw new IllegalArgumentException("Errores sintácticos detectados");
+        }
+        return tree;
+    }
+
+    private static SimbolosListener analizarSemantica(ParseTree tree) {
+        SimbolosListener listener = new SimbolosListener();
+        ParseTreeWalker.DEFAULT.walk(listener, tree);
+        if (!listener.getErrores().isEmpty()) {
+            listener.getErrores().forEach(e -> System.err.println(RED + e + RESET));
+            throw new RuntimeException("Errores semánticos detectados");
+        }
+        if (!listener.getWarnings().isEmpty()) {
+            System.out.println(YELLOW + "⚠ Warnings semánticos:" + RESET);
+            listener.getWarnings().forEach(w -> System.out.println(YELLOW + w + RESET));
+        }
+        return listener;
+    }
+
+    private static void mostrarAST(ParseTree tree, Parser parser) {
+        JFrame frame = new JFrame("AST");
+        List<String> names = Arrays.asList(parser.getRuleNames());
+        TreeViewer viewer = new TreeViewer(names, tree);
+        viewer.setScale(1.2);
+        frame.add(new JScrollPane(viewer));
+        frame.setSize(800, 600);
+        viewer.open(); // no bloquea
+    }
+
+    private static void guardarCodigo(List<String> codigo, String ruta) throws IOException {
+        try (BufferedWriter w = Files.newBufferedWriter(Paths.get(ruta))) {
+            w.write("// Código intermedio de tres direcciones\n\n");
+            for (int i = 0; i < codigo.size(); i++) {
+                w.write(String.format("%3d: %s%n", i, codigo.get(i)));
             }
         }
+        System.out.println(GREEN + "✅ Guardado C3D en " + ruta + RESET);
+    }
 
-        // 3) Crear Parser y generar AST
-        MiniLenguajeParser parser = new MiniLenguajeParser(tokens);
-        ParseTree tree = parser.programa();
+    private static String getBaseName(String path) {
+        String name = new File(path).getName();
+        return name.contains(".") ? name.substring(0, name.lastIndexOf('.')) : name;
+    }
 
-
-            List<String> reglaNombres = Arrays.asList(parser.getRuleNames());
-            TreeViewer tv = new TreeViewer(reglaNombres, tree);
-            JFrame frame = new JFrame("Árbol de Sintaxis");
-            frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-            frame.add(new JScrollPane(tv));
-            frame.setSize(800, 600);
-            frame.setVisible(true);
-
-        // 4) Invocar el listener semántico
-        SimbolosListener listener = new SimbolosListener();
-        ParseTreeWalker walker = new ParseTreeWalker();
-        walker.walk(listener, tree);
-
-        // 5) Obtener y mostrar errores y warnings semánticos
-        List<String> errores  = listener.getErrores();
-        List<String> warnings = listener.getWarnings();
-
-        if (!errores.isEmpty()) {
-            System.err.println("\n=== ERRORES SEMÁNTICOS ===");
-            errores.forEach(System.err::println);
-        }
-        if (!warnings.isEmpty()) {
-            System.out.println("\n=== WARNINGS SEMÁNTICOS ===");
-            warnings.forEach(System.out::println);
-        }
-
-        // 6) Si no hay errores, mostrar la tabla de símbolos
-        if (errores.isEmpty()) {
-            TablaSimbolos tabla = listener.getTablaSimbolos();
-            tabla.imprimir();
-        }
+    private static long ms(long nano) {
+        return Math.round(nano / 1_000_000.0);
     }
 }
