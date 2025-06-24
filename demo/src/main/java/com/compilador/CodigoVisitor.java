@@ -5,6 +5,18 @@ import org.antlr.v4.runtime.tree.AbstractParseTreeVisitor;
 
 import java.util.List;
 
+/**
+ * Visitor que recorre el AST y, apoyándose en {@link GeneradorCodigo},
+ * produce código intermedio de tres direcciones (C3D).
+ * <p>
+ * Las novedades respecto de la versión anterior son:
+ * <ul>
+ *     <li>Soporte para declaraciones de variables con inicialización en la misma línea
+ *     (por ejemplo: <code>int y = 10;</code>).</li>
+ *     <li>Soporte para la variante usada en la cabecera de un <code>for</code>.</li>
+ *     <li>Se mantiene compatibilidad con el resto de las construcciones ya procesadas.</li>
+ * </ul>
+ */
 public class CodigoVisitor extends MiniLenguajeParserBaseVisitor<String> {
     private final GeneradorCodigo gen = new GeneradorCodigo();
     private final TablaSimbolos tabla;
@@ -18,9 +30,12 @@ public class CodigoVisitor extends MiniLenguajeParserBaseVisitor<String> {
         return gen;
     }
 
+    // ------------------------------------------------------------
+    // Programa y funciones
+    // ------------------------------------------------------------
+
     @Override
     public String visitPrograma(MiniLenguajeParser.ProgramaContext ctx) {
-        // En tu gramática ProgramaContext sólo tiene declaracionFuncion(), no sentencia()
         for (MiniLenguajeParser.DeclaracionFuncionContext fCtx : ctx.declaracionFuncion()) {
             visit(fCtx);
         }
@@ -35,6 +50,59 @@ public class CodigoVisitor extends MiniLenguajeParserBaseVisitor<String> {
         visit(ctx.bloque());
         return null;
     }
+
+    // ------------------------------------------------------------
+    // Declaraciones de variables (¡novedad!)
+    // ------------------------------------------------------------
+
+    /**
+     * Maneja sentencias del tipo:
+     * <pre>
+     *     int y = 10;
+     *     double z;
+     * </pre>
+     * Si la declaración incluye una expresión de inicialización generamos una
+     * asignación explícita en C3D.  De esta forma el backend no depende de
+     * que el front‑end "recuerde" el valor inicial.
+     */
+    @Override
+    public String visitDeclaracionVariable(MiniLenguajeParser.DeclaracionVariableContext ctx) {
+        // Caso: sólo se declara (sin expresión) → no se genera código
+        if (ctx.expresion() == null) {
+            return null;
+        }
+
+        String nombre = ctx.ID().getText();
+        String valor  = visit(ctx.expresion()); // la expresión ya recursó y dejó C3D listo
+
+        System.out.println("🎯 VISITOR: Declaración con init -> " + nombre + " = " + valor);
+        gen.genAsignacion(nombre, valor);
+        return null;
+    }
+
+    /**
+     * Variante específica usada en la sección de inicialización de un <code>for</code>:
+     * <pre>
+     *     for (int i = 0; i < 10; i++) { ... }
+     * </pre>
+     */
+    @Override
+    public String visitDeclaracionFor(MiniLenguajeParser.DeclaracionForContext ctx) {
+        // Si no hay expresión no hay código.
+        if (ctx.expresion() == null) {
+            return null;
+        }
+        String nombre = ctx.ID().getText();
+        String valor  = visit(ctx.expresion());
+
+        System.out.println("🎯 VISITOR: Declaración‑for con init -> " + nombre + " = " + valor);
+        gen.genAsignacion(nombre, valor);
+        return null;
+    }
+
+    // ------------------------------------------------------------
+    // Asignaciones y sentencias de control
+    // ------------------------------------------------------------
 
     @Override
     public String visitAsignacion(MiniLenguajeParser.AsignacionContext ctx) {
@@ -86,7 +154,7 @@ public class CodigoVisitor extends MiniLenguajeParserBaseVisitor<String> {
         String startL = gen.newLabel();
         String endL   = gen.newLabel();
 
-        // inicialización
+        // inicialización (puede ser asignación o declaración)
         visit(ctx.forInit());
         gen.genLabel(startL);
 
@@ -103,6 +171,10 @@ public class CodigoVisitor extends MiniLenguajeParserBaseVisitor<String> {
         gen.genLabel(endL);
         return null;
     }
+
+    // ------------------------------------------------------------
+    // Expresiones
+    // ------------------------------------------------------------
 
     @Override
     public String visitExpBinaria(MiniLenguajeParser.ExpBinariaContext ctx) {
@@ -127,6 +199,10 @@ public class CodigoVisitor extends MiniLenguajeParserBaseVisitor<String> {
         return visit(ctx.expresion());
     }
 
+    // ------------------------------------------------------------
+    // Return y llamadas
+    // ------------------------------------------------------------
+
     @Override
     public String visitRetorno(MiniLenguajeParser.RetornoContext ctx) {
         System.out.println("🎯 VISITOR: Encontré RETURN");
@@ -149,7 +225,7 @@ public class CodigoVisitor extends MiniLenguajeParserBaseVisitor<String> {
             gen.genAsignacion("param", aVal);
         }
         String temp = gen.newTemp();
-        // (Aquí puedes generar la instrucción de call, e.j. gen.genCall(fn, temp))
+        // Aquí se podría generar una instrucción específica de llamada "call" si se necesitara
         System.out.printf("🔧 GENERADOR: Generando llamada %s -> %s%n", fn, temp);
         return temp;
     }

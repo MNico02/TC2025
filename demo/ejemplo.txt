@@ -1,5 +1,5 @@
 int calculaMax(int a, int b) {
-    int resultado;
+    int resultado = 0 ;
 
     if (a > b) {
         resultado = a;
@@ -7,6 +7,11 @@ int calculaMax(int a, int b) {
         resultado = b;
     }
 
+    int x;
+    x = 10;
+    int y = 10;
+    int z = 10;
+    int test = x - y - z;
     return resultado;
 }
 

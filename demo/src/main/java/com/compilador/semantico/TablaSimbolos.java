@@ -3,69 +3,67 @@ package com.compilador.semantico;
 import java.util.*;
 
 /**
- * Tabla de Símbolos que gestiona ámbitos, orden de declaración y permite
- * búsquedas locales y jerárquicas (local → global).
+ * Tabla de Símbolos que gestiona ámbitos (scopes) y permite
+ * inserción, búsqueda y reporte de identificadores a lo largo del programa.
+ *
+ * Opción 1 aplicada: **no** eliminamos el mapa de símbolos al salir del ámbito,
+ * de modo que las variables y parámetros locales queden disponibles para el
+ * reporte final de la tabla, pero la semántica del compilador sigue intacta.
  */
 public class TablaSimbolos {
-    // Mapa de ámbito → (nombre símbolo → Simbolo)
+
+    // ────────────────────────────────────────────────────────────────────────────
+    //  Atributos
+    // ────────────────────────────────────────────────────────────────────────────
+    /** Mapa (ámbito → mapa ordenado de nombre → símbolo) */
     private final Map<String, LinkedHashMap<String, Simbolo>> tablaPorAmbito = new HashMap<>();
 
-    // Pila de ámbitos activos (tope = ámbito actual)
+    /** Pila de ámbitos activos. El tope indica el ámbito actual */
     private final Deque<String> pilaAmbitos = new ArrayDeque<>();
 
-    // Contador global para asignar orden incremental a cada símbolo
+    /** Contador global para asignar el campo `orden` incrementalmente */
     private int contadorOrden = 0;
 
+    // ────────────────────────────────────────────────────────────────────────────
+    //  Constructor
+    // ────────────────────────────────────────────────────────────────────────────
     public TablaSimbolos() {
-        // Iniciar con ámbito "global"
+        // Ámbito raíz
         pilaAmbitos.push("global");
         tablaPorAmbito.put("global", new LinkedHashMap<>());
     }
 
-    /**
-     * Devuelve el ámbito actual (tope de la pila).
-     */
+    // ────────────────────────────────────────────────────────────────────────────
+    //  Gestión de ámbitos
+    // ────────────────────────────────────────────────────────────────────────────
     public String getAmbitoActual() {
         return pilaAmbitos.peek();
     }
 
-    /**
-     * Entra a un nuevo ámbito (por ejemplo, al entrar en el cuerpo de una función).
-     * Crea un mapa vacío si aún no existe ese ámbito.
-     */
     public void entrarAmbito(String ambito) {
         pilaAmbitos.push(ambito);
         tablaPorAmbito.putIfAbsent(ambito, new LinkedHashMap<>());
     }
 
     /**
-     * Sale del ámbito actual, regresando al anterior.
-     * Nota: eliminamos el mapa de símbolos de ese ámbito para no mezclarlo
-     * con futuros ámbitos que puedan reusar el mismo nombre. Si se desea
-     * conservar símbolos de funciones para imprimir luego, se podría omitir
-     * la remoción aquí.
+     * Opción 1 → no borramos el mapa del ámbito al salir, sólo desapilamos.
      */
     public void salirAmbito() {
-        String ambito = pilaAmbitos.pop();
-        tablaPorAmbito.remove(ambito);
+        pilaAmbitos.pop();
     }
 
-    /**
-     * Agrega un símbolo en el ámbito actual.
-     * Retorna true si se agregó exitosamente, o false si ya existía un símbolo
-     * con el mismo nombre en ese mismo ámbito.
-     *
-     * Asigna automáticamente un valor de "orden" incremental al símbolo para
-     * poder comparar órdenes de declaración.
-     */
+    // ────────────────────────────────────────────────────────────────────────────
+    //  Inserción y búsqueda de símbolos
+    // ────────────────────────────────────────────────────────────────────────────
     public boolean agregar(Simbolo s) {
         String ambito = getAmbitoActual();
         LinkedHashMap<String, Simbolo> mapaActual = tablaPorAmbito.get(ambito);
 
         if (mapaActual.containsKey(s.getNombre())) {
-            return false;
+            return false; // redeclaración
         }
-        // Crear un nuevo Simbolo con orden asignado
+
+        // Clonamos el símbolo asignando el orden
         Simbolo sConOrden = new Simbolo(
                 s.getNombre(),
                 s.getTipo(),
@@ -76,15 +74,12 @@ public class TablaSimbolos {
                 s.esConstante(),
                 contadorOrden++
         );
-        // Si es función, sus parámetros se agregarán en exitDeclaracionFuncion del listener
+
         mapaActual.put(sConOrden.getNombre(), sConOrden);
         return true;
     }
 
-    /**
-     * Busca un símbolo por nombre empezando en el ámbito actual y, de no hallarlo,
-     * retrocede en la pila de ámbitos hasta "global". Retorna null si no se encuentra.
-     */
+    /** Búsqueda jerárquica desde el ámbito actual hasta global */
     public Simbolo buscar(String nombre) {
         for (String ambito : pilaAmbitos) {
             LinkedHashMap<String, Simbolo> mapa = tablaPorAmbito.get(ambito);
@@ -95,51 +90,31 @@ public class TablaSimbolos {
         return null;
     }
 
-    /**
-     * Busca un símbolo EXACTAMENTE en el ámbito dado (sin buscar en padres).
-     * Retorna null si no existe en ese ámbito.
-     */
+    /** Búsqueda estricta en un ámbito dado */
     public Simbolo buscarEnAmbitoExacto(String ambito, String nombre) {
         LinkedHashMap<String, Simbolo> mapa = tablaPorAmbito.get(ambito);
-        if (mapa != null && mapa.containsKey(nombre)) {
-            return mapa.get(nombre);
-        }
-        return null;
+        return (mapa != null) ? mapa.get(nombre) : null;
     }
 
-    /**
-     * Busca un símbolo en el ámbito especificado, y si no está allí, busca
-     * en su ámbito padre (local→global). Retorna null si no existe.
-     *
-     * Útil cuando se quiere verificar parámetros dentro de una función sin
-     * salir del ámbito de la misma.
-     */
+    /** Búsqueda en un ámbito específico y luego en sus ancestros */
     public Simbolo buscarEnAmbitoActualYPadre(String nombre, String ambitoEspecifico) {
-        // Guardar pila temporal
-        Deque<String> pilaCopia = new ArrayDeque<>(pilaAmbitos);
-        // Bajar hasta que el tope sea ambitoEspecifico
-        while (!pilaCopia.isEmpty() && !pilaCopia.peek().equals(ambitoEspecifico)) {
-            pilaCopia.pop();
+        Deque<String> copia = new ArrayDeque<>(pilaAmbitos);
+        while (!copia.isEmpty() && !copia.peek().equals(ambitoEspecifico)) {
+            copia.pop();
         }
-        // Buscar en ambitoEspecifico y luego en sus padres
-        for (String ambito : pilaCopia) {
-            LinkedHashMap<String, Simbolo> mapa = tablaPorAmbito.get(ambito);
+        for (String amb : copia) {
+            LinkedHashMap<String, Simbolo> mapa = tablaPorAmbito.get(amb);
             if (mapa != null && mapa.containsKey(nombre)) {
                 return mapa.get(nombre);
             }
         }
-        // Finalmente, buscar en global
-        LinkedHashMap<String, Simbolo> globalMap = tablaPorAmbito.get("global");
-        if (globalMap != null && globalMap.containsKey(nombre)) {
-            return globalMap.get(nombre);
-        }
-        return null;
+        // Finalmente global
+        return tablaPorAmbito.get("global").get(nombre);
     }
 
-    /**
-     * Devuelve una lista de todos los símbolos en todos los ámbitos, ordenada
-     * por el campo 'orden' que indica el momento de su declaración.
-     */
+    // ────────────────────────────────────────────────────────────────────────────
+    //  Reporte
+    // ────────────────────────────────────────────────────────────────────────────
     public List<Simbolo> getTodosLosSimbolos() {
         List<Simbolo> lista = new ArrayList<>();
         for (LinkedHashMap<String, Simbolo> mapa : tablaPorAmbito.values()) {
@@ -149,13 +124,9 @@ public class TablaSimbolos {
         return lista;
     }
 
-    /**
-     * Imprime en consola la tabla completa de símbolos, mostrando:
-     * NOMBRE | TIPO | CATEGORÍA | LÍNEA | COLUMNA | ÁMBITO | PARÁMETROS | FLAGS
-     */
     public void imprimir() {
         System.out.println("\n=== TABLA DE SÍMBOLOS ===");
-        System.out.printf("%-10s %-10s %-10s %-5s %-7s %-10s %-15s %-10s%n",
+        System.out.printf("%-12s %-10s %-9s %-5s %-5s %-11s %-15s %-10s%n",
                 "NOMBRE", "TIPO", "CATEGORIA", "LIN", "COL", "AMBITO", "PARAMETROS", "FLAGS");
         System.out.println("------------------------------------------------------------------------------");
         for (Simbolo s : getTodosLosSimbolos()) {
@@ -165,7 +136,7 @@ public class TablaSimbolos {
             String flags = (s.esConstante() ? "const " : "")
                     + (s.esInicializada() ? "" : "no-inicializada ")
                     + (s.esUsada() ? "" : "no-usada");
-            System.out.printf("%-10s %-10s %-10s %-5d %-7d %-10s %-15s %-10s%n",
+            System.out.printf("%-12s %-10s %-9s %-5d %-5d %-11s %-15s %-10s%n",
                     s.getNombre(),
                     s.getTipo(),
                     s.getCategoria().name().toLowerCase(),
