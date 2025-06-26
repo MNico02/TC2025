@@ -10,7 +10,6 @@ import javax.swing.*;
 import java.io.*;
 import java.nio.file.*;
 import java.util.*;
-import java.util.stream.Collectors;
 
 public class App {
     // ANSI colors
@@ -27,7 +26,7 @@ public class App {
             System.exit(1);
         }
         String inputPath = args[0];
-        boolean showAst  = Arrays.asList(args).contains("--no-ast") == false;
+        boolean showAst  = !Arrays.asList(args).contains("--no-ast");
         String baseName  = getBaseName(inputPath);
 
         try {
@@ -65,7 +64,7 @@ public class App {
             System.out.println("\n" + BLUE + "📋 Tabla de Símbolos" + RESET);
             tabla.imprimir();
 
-            // 5. Código Intermedio
+            // 5. Generación de C3D
             t0 = System.nanoTime();
             CodigoVisitor cv = new CodigoVisitor(tabla);
             cv.visit(tree);
@@ -74,21 +73,31 @@ public class App {
             System.out.println(GREEN + "✅ Generación de C3D OK" + RESET +
                     " (" + ms(t4 - t0) + " ms)");
 
-            System.out.println("\n" + BLUE + "📝 Código de Tres Direcciones" + RESET);
-            gen.imprimirCodigo();
+            // 6. Imprimir y guardar C3D “raw”
+            List<String> codigoRaw = gen.getCodigo();
+            System.out.println("\n" + BLUE + "📝 C3D (RAW)" + RESET);
+            codigoRaw.forEach((instr) -> System.out.println(instr));
+            String rawOut = baseName + "_c3d.txt";
+            guardarCodigo(codigoRaw, rawOut);
 
-            // 6. Guardar C3D
-            String outFile = baseName + "_c3d.txt";
-            guardarCodigo(gen.getCodigo(), outFile);
+            // 7. Optimización de C3D
+            Optimizador opt = new Optimizador(codigoRaw);
+            List<String> codigoOpt = opt.optimizar();
 
-            // 7. Resumen
+            System.out.println("\n" + BLUE + "🛠️ C3D (OPTIMIZADO)" + RESET);
+            codigoOpt.forEach((instr) -> System.out.println(instr));
+            String optOut = baseName + "_c3d_opt.txt";
+            guardarCodigo(codigoOpt, optOut);
+
+            // 8. Resumen
             long tEnd = System.nanoTime();
             System.out.println("\n" + BLUE + "=== Resumen ===" + RESET);
             System.out.println("Tiempo total: " + ms(tEnd - tStart) + " ms");
             System.out.println("Tokens: " + (tokens.size()-1));
-           // System.out.println("Símbolos: " + tabla.size());
-            System.out.println("Instrucciones: " + gen.getCodigo().size());
-            System.out.println("Archivo C3D: " + outFile);
+            System.out.println("Instrucciones RAW: " + codigoRaw.size());
+            System.out.println("Instrucciones OPT: " + codigoOpt.size());
+            System.out.println("Archivo RAW: " + rawOut);
+            System.out.println("Archivo OPT: " + optOut);
             System.out.println(GREEN + "\n🎉 ¡COMPILACIÓN EXITOSA! 🎉" + RESET);
 
         } catch (ParseCancellationException ex) {
@@ -103,66 +112,56 @@ public class App {
         }
     }
 
-    private static CommonTokenStream analizarLexico(String path) throws IOException {
-        CharStream in = CharStreams.fromFileName(path);
-        MiniLenguajeLexer lexer = new MiniLenguajeLexer(in);
-        List<String> errs = new ArrayList<>();
+    private static CommonTokenStream analizarLexico(String inputPath) throws IOException {
+        CharStream input = CharStreams.fromFileName(inputPath);
+        MiniLenguajeLexer lexer = new MiniLenguajeLexer(input);
         lexer.removeErrorListeners();
-        lexer.addErrorListener(new BaseErrorListener(){
+        lexer.addErrorListener(new BaseErrorListener() {
             @Override
-            public void syntaxError(Recognizer<?,?> r, Object o, int l, int c, String m, RecognitionException e){
-                errs.add("Léxico " + l + ":" + c + " " + m);
-                throw new ParseCancellationException(m);
+            public void syntaxError(Recognizer<?, ?> recognizer, Object offendingSymbol,
+                                  int line, int charPositionInLine, String msg,
+                                  RecognitionException e) {
+                throw new ParseCancellationException("Línea " + line + ":" + charPositionInLine + " " + msg);
             }
         });
-        CommonTokenStream tokens = new CommonTokenStream(lexer);
-        tokens.fill();
-        if (!errs.isEmpty()) {
-            errs.forEach(msg -> { throw new ParseCancellationException(msg); });
-        }
-        return tokens;
+        return new CommonTokenStream(lexer);
     }
 
     private static ParseTree analizarSintaxis(CommonTokenStream tokens) {
         MiniLenguajeParser parser = new MiniLenguajeParser(tokens);
-        List<String> errs = new ArrayList<>();
         parser.removeErrorListeners();
-        parser.addErrorListener(new BaseErrorListener(){
+        parser.addErrorListener(new BaseErrorListener() {
             @Override
-            public void syntaxError(Recognizer<?,?> r, Object o, int l, int c, String m, RecognitionException e){
-                errs.add("Sintaxis " + l + ":" + c + " " + m);
+            public void syntaxError(Recognizer<?, ?> recognizer, Object offendingSymbol,
+                                  int line, int charPositionInLine, String msg,
+                                  RecognitionException e) {
+                throw new IllegalArgumentException("Línea " + line + ":" + charPositionInLine + " " + msg);
             }
         });
-        ParseTree tree = parser.programa();
-        if (!errs.isEmpty()) {
-            errs.forEach(msg -> System.err.println(RED + msg + RESET));
-            throw new IllegalArgumentException("Errores sintácticos detectados");
+        return parser.programa();
+    }
+
+    private static void mostrarAST(ParseTree tree, MiniLenguajeParser parser) {
+        try {
+            JFrame frame = new JFrame("AST - " + parser.getClass().getSimpleName());
+            TreeViewer viewer = new TreeViewer(Arrays.asList(parser.getRuleNames()), tree);
+            viewer.setScale(1.5);
+            frame.add(viewer);
+            frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+            frame.setSize(800, 600);
+            frame.setLocationRelativeTo(null);
+            frame.setVisible(true);
+            System.out.println(YELLOW + "⚠️  Ventana AST abierta. Ciérrala para continuar..." + RESET);
+        } catch (Exception ex) {
+            System.err.println(YELLOW + "⚠️  No se pudo mostrar AST gráfico: " + ex.getMessage() + RESET);
         }
-        return tree;
     }
 
     private static SimbolosListener analizarSemantica(ParseTree tree) {
         SimbolosListener listener = new SimbolosListener();
-        ParseTreeWalker.DEFAULT.walk(listener, tree);
-        if (!listener.getErrores().isEmpty()) {
-            listener.getErrores().forEach(e -> System.err.println(RED + e + RESET));
-            throw new RuntimeException("Errores semánticos detectados");
-        }
-        if (!listener.getWarnings().isEmpty()) {
-            System.out.println(YELLOW + "⚠ Warnings semánticos:" + RESET);
-            listener.getWarnings().forEach(w -> System.out.println(YELLOW + w + RESET));
-        }
+        ParseTreeWalker walker = new ParseTreeWalker();
+        walker.walk(listener, tree);
         return listener;
-    }
-
-    private static void mostrarAST(ParseTree tree, Parser parser) {
-        JFrame frame = new JFrame("AST");
-        List<String> names = Arrays.asList(parser.getRuleNames());
-        TreeViewer viewer = new TreeViewer(names, tree);
-        viewer.setScale(1.2);
-        frame.add(new JScrollPane(viewer));
-        frame.setSize(800, 600);
-        viewer.open(); // no bloquea
     }
 
     private static void guardarCodigo(List<String> codigo, String ruta) throws IOException {
@@ -172,12 +171,14 @@ public class App {
                 w.write(String.format("%3d: %s%n", i, codigo.get(i)));
             }
         }
-        System.out.println(GREEN + "✅ Guardado C3D en " + ruta + RESET);
+        System.out.println(GREEN + "✅ Guardado en " + ruta + RESET);
     }
 
     private static String getBaseName(String path) {
         String name = new File(path).getName();
-        return name.contains(".") ? name.substring(0, name.lastIndexOf('.')) : name;
+        return name.contains(".")
+                ? name.substring(0, name.lastIndexOf('.'))
+                : name;
     }
 
     private static long ms(long nano) {
